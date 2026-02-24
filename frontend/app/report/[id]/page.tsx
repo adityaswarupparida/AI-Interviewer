@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { ReportCard } from "@/components/ReportCard";
 import { Loader2 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL;
+const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 export default function ReportPage() {
   const { id } = useParams<{ id: string }>();

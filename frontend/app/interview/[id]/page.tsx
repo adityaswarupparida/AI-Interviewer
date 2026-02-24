@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { InterviewRoom } from "@/components/InterviewRoom";
 import { Loader2 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL;
+const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 interface TokenResponse {
   token: string;

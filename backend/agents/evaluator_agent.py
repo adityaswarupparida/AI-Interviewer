@@ -88,7 +88,7 @@ Return this exact JSON structure — no markdown, no explanation, just JSON:
 def extract_skills_from_jd(job_description: str, role: str) -> list[str]:
     """Use Gemini to pull 8-10 skills to assess from the job description."""
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             temperature=0.2,
@@ -117,7 +117,7 @@ def generate_report(
     )
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             temperature=0.3,  # low temp for consistent structured output

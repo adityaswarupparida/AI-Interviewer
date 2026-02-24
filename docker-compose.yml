@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   postgres:
@@ -36,15 +34,17 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/ai_intrvwr
       REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # alembic.ini lives in /app/backend — run it from there, then start uvicorn from /app
     command: >
-      sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "cd /app/backend && alembic upgrade head && cd /app && uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend   # backend/ is now a subdirectory of WORKDIR
 
   celery:
     build: ./backend
@@ -52,6 +52,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/ai_intrvwr
       REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,7 +60,7 @@ services:
         condition: service_healthy
     command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend
 
   agent:
     build: ./backend
@@ -67,12 +68,13 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/ai_intrvwr
       REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
     depends_on:
       - backend
       - redis
-    command: python -m backend.agents.interviewer_agent dev
+    command: python -m backend.agents.interviewer_agent start
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend
 
   frontend:
     build: ./frontend

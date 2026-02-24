@@ -36,6 +36,16 @@ async def create_interview_room(
             max_participants=3,  # candidate + agent + optional observer
         )
     )
+
+    # Explicitly dispatch the agent worker to this room.
+    # Without this the agent worker sits idle — it does NOT auto-join rooms.
+    await lk.agent_dispatch.create_dispatch(
+        api.CreateAgentDispatchRequest(
+            room=room_name,
+            agent_name="interviewer",
+        )
+    )
+
     await lk.aclose()
 
 

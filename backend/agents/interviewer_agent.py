@@ -1,12 +1,11 @@
 """
 LiveKit voice agent — the real-time interviewer.
 
-Run as a separate process:
-    python -m backend.agents.interviewer_agent dev
+Uses Gemini Live API (RealtimeModel) which works with just a GEMINI_API_KEY.
+google.STT() / google.TTS() require Google Cloud ADC (service account) — avoid them.
 
-The agent connects to LiveKit, waits for interview rooms, conducts the
-interview via voice, then POSTs the transcript to the backend API which
-queues the Celery evaluation task.
+Run as a separate process:
+    python -m backend.agents.interviewer_agent start
 """
 import asyncio
 import json
@@ -14,7 +13,8 @@ import logging
 
 import httpx
 from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, WorkerOptions, cli
-from livekit.plugins import google, silero
+from livekit.plugins import silero
+from livekit.plugins.google import beta
 
 from backend.config import settings
 
@@ -32,7 +32,7 @@ JOB CONTEXT:
 {job_description}
 
 YOUR BEHAVIOR:
-- Greet the candidate warmly when they join. Introduce yourself as their AI interviewer.
+- Start immediately by greeting the candidate warmly and introducing yourself as their AI interviewer. Do not wait for them to speak first.
 - Ask ONE question at a time. Never stack multiple questions.
 - Listen carefully and probe deeper when answers are vague or shallow.
 - Progress naturally: warm-up → technical → behavioral → wrap-up.
@@ -57,29 +57,14 @@ ENDING THE INTERVIEW:
 class InterviewerAgent(Agent):
     def __init__(self, instructions: str) -> None:
         super().__init__(instructions=instructions)
-
-    async def on_enter(self) -> None:
-        """Called once when the agent joins the room."""
-        await self.session.say(
-            "Hello! Welcome to your interview. I'm your AI interviewer today. "
-            "Please take a moment to get comfortable — whenever you're ready, we'll begin."
-        )
+    # No on_enter override — session.say() requires a separate TTS model which
+    # RealtimeModel doesn't have. The greeting is handled by the instructions instead.
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _build_transcript(session: AgentSession) -> str:
-    lines = []
-    for msg in session.history.items:
-        role = "Interviewer" if msg.role == "assistant" else "Candidate"
-        content = msg.content if isinstance(msg.content, str) else str(msg.content)
-        lines.append(f"{role}: {content}")
-    return "\n\n".join(lines)
-
-
-async def _finalize_interview(interview_id: str, session: AgentSession) -> None:
+async def _finalize_interview(interview_id: str, transcript: str) -> None:
     """Save transcript and trigger async evaluation via backend API."""
-    transcript = _build_transcript(session)
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
@@ -111,22 +96,35 @@ async def entrypoint(ctx: JobContext) -> None:
         skills_to_cover=", ".join(skills) if isinstance(skills, list) else skills,
     )
 
+    # RealtimeModel uses Gemini Live API — works with GEMINI_API_KEY only.
+    # Do NOT use google.STT() / google.TTS() — those require Google Cloud ADC.
     session = AgentSession(
-        stt=google.STT(),
-        llm=google.LLM(model="gemini-2.0-flash"),
-        tts=google.TTS(voice="en-US-Chirp3-HD-Puck"),
+        llm=beta.realtime.RealtimeModel(
+            model="gemini-2.5-flash-native-audio-preview-12-2025",  # v1alpha model for livekit-plugins-google
+            voice="Puck",
+            api_key=settings.GEMINI_API_KEY,
+        ),
         vad=silero.VAD.load(),
     )
 
     interview_done = False
+    transcript_lines: list[str] = []
+
+    @session.on("user_speech_committed")
+    def on_user_speech(msg) -> None:
+        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+        transcript_lines.append(f"Candidate: {content}")
 
     @session.on("agent_speech_committed")
-    def on_speech_committed(msg) -> None:
+    def on_agent_speech(msg) -> None:
         nonlocal interview_done
         content = msg.content if isinstance(msg.content, str) else str(msg.content)
+        transcript_lines.append(f"Interviewer: {content}")
+
         if not interview_done and "[INTERVIEW_COMPLETE]" in content:
             interview_done = True
-            asyncio.create_task(_finalize_interview(interview_id, session))
+            transcript = "\n\n".join(transcript_lines)
+            asyncio.create_task(_finalize_interview(interview_id, transcript))
 
     await session.start(
         room=ctx.room,
@@ -136,4 +134,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="interviewer",   # must match CreateAgentDispatchRequest.agent_name
+    ))

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ClipboardCopy, Plus, Loader2 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL;
+const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 interface Interview {
   id: string;
