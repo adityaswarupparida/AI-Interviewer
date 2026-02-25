@@ -103,10 +103,40 @@ export function ReportCard({ report }: { report: Report }) {
 
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <h2 className="font-semibold mb-4">Skill Scores</h2>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={report.skill_scores} layout="vertical" margin={{ left: 20 }}>
-              <XAxis type="number" domain={[0, 10]} tick={{ fill: "#9ca3af", fontSize: 11 }} />
-              <YAxis type="category" dataKey="skill" width={100} tick={{ fill: "#9ca3af", fontSize: 11 }} />
+          <ResponsiveContainer width="100%" height={Math.max(260, report.skill_scores.length * 36)}>
+            <BarChart data={report.skill_scores} layout="vertical" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
+              <XAxis type="number" domain={[0, 10]} tick={{ fill: "#9ca3af", fontSize: 11 }} tickCount={6} />
+              <YAxis
+                type="category"
+                dataKey="skill"
+                width={100}
+                tick={({ x, y, payload }: any) => {
+                  const words = payload.value.split(" ");
+                  const lines: string[] = [];
+                  let current = "";
+                  for (const word of words) {
+                    const test = current ? `${current} ${word}` : word;
+                    if (test.length > 14 && current) {
+                      lines.push(current);
+                      current = word;
+                    } else {
+                      current = test;
+                    }
+                  }
+                  if (current) lines.push(current);
+                  const displayLines = lines.slice(0, 2);
+                  if (lines.length > 2) displayLines[1] = displayLines[1].slice(0, 12) + "…";
+                  const lineHeight = 11;
+                  const offsetY = displayLines.length === 2 ? -lineHeight / 2 : 0;
+                  return (
+                    <text x={x} y={y + offsetY} textAnchor="end" fill="#9ca3af" fontSize={10}>
+                      {displayLines.map((line, i) => (
+                        <tspan key={i} x={x} dy={i === 0 ? 4 : lineHeight}>{line}</tspan>
+                      ))}
+                    </text>
+                  );
+                }}
+              />
               <Tooltip
                 content={({ payload }) =>
                   payload?.[0] ? (

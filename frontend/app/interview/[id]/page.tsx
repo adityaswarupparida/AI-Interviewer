@@ -59,6 +59,7 @@ export default function InterviewPage() {
       token={data!.token}
       serverUrl={data!.livekit_url}
       candidateName={candidateName}
+      interviewId={id}
     />
   );
 }

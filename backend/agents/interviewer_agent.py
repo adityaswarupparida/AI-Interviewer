@@ -65,22 +65,28 @@ class InterviewerAgent(Agent):
 
 async def _finalize_interview(interview_id: str, transcript: str) -> None:
     """Save transcript and trigger async evaluation via backend API."""
+    logger.info("[FINALIZE] Starting finalization for interview %s", interview_id)
+    logger.info("[FINALIZE] Transcript length: %d chars, %d lines", len(transcript), transcript.count("\n\n") + 1)
+    logger.info("[FINALIZE] Calling webhook at %s", f"{settings.BACKEND_URL}/api/webhooks/interview-complete")
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{settings.BACKEND_URL}/api/webhooks/interview-complete",
                 json={"interview_id": interview_id, "transcript": transcript},
             )
+            logger.info("[FINALIZE] Webhook response status: %s", resp.status_code)
             resp.raise_for_status()
-        logger.info("Interview %s finalized — evaluation queued.", interview_id)
+        logger.info("[FINALIZE] Interview %s finalized — evaluation queued.", interview_id)
     except Exception as exc:
-        logger.error("Failed to finalize interview %s: %s", interview_id, exc)
+        logger.error("[FINALIZE] Failed to finalize interview %s: %s", interview_id, exc)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 async def entrypoint(ctx: JobContext) -> None:
+    logger.info("[AGENT] entrypoint started, connecting to room...")
     await ctx.connect()
+    logger.info("[AGENT] connected to room: %s", ctx.room.name)
 
     metadata = json.loads(ctx.room.metadata or "{}")
     interview_id = metadata.get("interview_id", "unknown")
@@ -88,6 +94,7 @@ async def entrypoint(ctx: JobContext) -> None:
     jd = metadata.get("job_description", "")
     skills = metadata.get("skills_to_cover", [])
     candidate_name = metadata.get("candidate_name", "the candidate")
+    logger.info("[AGENT] interview_id=%s candidate=%s role=%s", interview_id, candidate_name, role)
 
     instructions = _INSTRUCTIONS.format(
         role=role,
@@ -96,6 +103,7 @@ async def entrypoint(ctx: JobContext) -> None:
         skills_to_cover=", ".join(skills) if isinstance(skills, list) else skills,
     )
 
+    logger.info("[AGENT] creating AgentSession with RealtimeModel...")
     # RealtimeModel uses Gemini Live API — works with GEMINI_API_KEY only.
     # Do NOT use google.STT() / google.TTS() — those require Google Cloud ADC.
     session = AgentSession(
@@ -106,31 +114,65 @@ async def entrypoint(ctx: JobContext) -> None:
         ),
         vad=silero.VAD.load(),
     )
+    logger.info("[AGENT] AgentSession created successfully")
 
     interview_done = False
     transcript_lines: list[str] = []
 
-    @session.on("user_speech_committed")
-    def on_user_speech(msg) -> None:
-        content = msg.content if isinstance(msg.content, str) else str(msg.content)
-        transcript_lines.append(f"Candidate: {content}")
-
-    @session.on("agent_speech_committed")
-    def on_agent_speech(msg) -> None:
+    # conversation_item_added fires for both user and agent turns with RealtimeModel.
+    # user_speech_committed / agent_speech_committed are NOT emitted by RealtimeModel.
+    @session.on("conversation_item_added")
+    def on_conversation_item(event) -> None:
         nonlocal interview_done
-        content = msg.content if isinstance(msg.content, str) else str(msg.content)
-        transcript_lines.append(f"Interviewer: {content}")
+        item = event.item
+        text = item.text_content
+        if not text:
+            return
 
-        if not interview_done and "[INTERVIEW_COMPLETE]" in content:
+        role = str(item.role)
+        if "user" in role:
+            label = "Candidate"
+        else:
+            label = "Interviewer"
+
+        logger.info("[TRANSCRIPT] %s: %s", label, text[:80])
+        transcript_lines.append(f"{label}: {text}")
+
+        if label == "Interviewer" and not interview_done and "[INTERVIEW_COMPLETE]" in text:
+            logger.info("[AGENT] [INTERVIEW_COMPLETE] detected — triggering finalization")
             interview_done = True
             transcript = "\n\n".join(transcript_lines)
             asyncio.create_task(_finalize_interview(interview_id, transcript))
 
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant) -> None:
+        nonlocal interview_done
+        logger.info("[AGENT] participant_disconnected: %s | interview_done=%s | transcript_lines=%d",
+                    participant.identity, interview_done, len(transcript_lines))
+        # When the candidate closes the window, finalize with whatever transcript exists.
+        # close_on_disconnect=False keeps the session alive so the HTTP call can complete
+        # before we explicitly close the session.
+        if not interview_done and transcript_lines:
+            interview_done = True
+            transcript = "\n\n".join(transcript_lines)
+            logger.info("[AGENT] finalizing interview %s with %d transcript lines", interview_id, len(transcript_lines))
+
+            async def _finalize_then_close() -> None:
+                await _finalize_interview(interview_id, transcript)
+                await session.aclose()
+
+            asyncio.create_task(_finalize_then_close())
+        else:
+            logger.info("[AGENT] no transcript to save (lines=%d, done=%s) — closing session", len(transcript_lines), interview_done)
+            asyncio.create_task(session.aclose())
+
+    logger.info("[AGENT] starting session...")
     await session.start(
         room=ctx.room,
         agent=InterviewerAgent(instructions),
-        room_input_options=RoomInputOptions(noise_cancellation=True),
+        room_input_options=RoomInputOptions(noise_cancellation=True, close_on_disconnect=False),
     )
+    logger.info("[AGENT] session.start() returned")
 
 
 if __name__ == "__main__":

@@ -68,6 +68,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/ai_intrvwr
       REDIS_URL: redis://redis:6379/0
+      BACKEND_URL: http://backend:8000
       PYTHONPATH: /app
     depends_on:
       - backend

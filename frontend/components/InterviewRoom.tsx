@@ -5,17 +5,22 @@ import {
   RoomAudioRenderer,
   useVoiceAssistant,
   BarVisualizer,
+  useRoomContext,
 } from "@livekit/components-react";
-import { Mic, MicOff } from "lucide-react";
+import { Mic, MicOff, PhoneOff } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface InterviewRoomProps {
   token: string;
   serverUrl: string;
   candidateName: string;
+  interviewId: string;
 }
 
-export function InterviewRoom({ token, serverUrl, candidateName }: InterviewRoomProps) {
+export function InterviewRoom({ token, serverUrl, candidateName, interviewId }: InterviewRoomProps) {
+  const router = useRouter();
+
   return (
     <LiveKitRoom
       token={token}
@@ -24,6 +29,7 @@ export function InterviewRoom({ token, serverUrl, candidateName }: InterviewRoom
       audio={true}
       video={false}
       className="h-screen"
+      onDisconnected={() => router.push(`/report/${interviewId}`)}
     >
       <RoomAudioRenderer />
       <InterviewUI candidateName={candidateName} />
@@ -33,6 +39,7 @@ export function InterviewRoom({ token, serverUrl, candidateName }: InterviewRoom
 
 function InterviewUI({ candidateName }: { candidateName: string }) {
   const { state, audioTrack } = useVoiceAssistant();
+  const room = useRoomContext();
   const [muted, setMuted] = useState(false);
 
   const stateLabel: Record<string, string> = {
@@ -51,13 +58,18 @@ function InterviewUI({ candidateName }: { candidateName: string }) {
       {/* Interviewer avatar */}
       <div className="relative">
         <div
-          className={`w-36 h-36 rounded-full flex items-center justify-center text-4xl transition-all duration-300 ${
+          className={`w-36 h-36 rounded-full flex items-center justify-center transition-all duration-300 ${
             isAgentSpeaking
               ? "bg-blue-600 shadow-[0_0_40px_10px_rgba(59,130,246,0.4)]"
               : "bg-gray-800"
           }`}
         >
-          🤖
+          <svg viewBox="0 0 64 64" className="w-16 h-16 text-white opacity-80" fill="currentColor">
+            <circle cx="32" cy="20" r="10" />
+            <rect x="18" y="34" width="28" height="20" rx="6" />
+            <rect x="10" y="36" width="8" height="14" rx="4" />
+            <rect x="46" y="36" width="8" height="14" rx="4" />
+          </svg>
         </div>
         {isAgentSpeaking && (
           <div className="absolute inset-0 rounded-full border-4 border-blue-400 animate-ping opacity-30" />
@@ -79,16 +91,26 @@ function InterviewUI({ candidateName }: { candidateName: string }) {
       {/* Candidate info */}
       <p className="text-sm text-gray-600">You are: {candidateName}</p>
 
-      {/* Mute toggle */}
-      <button
-        onClick={() => setMuted((m) => !m)}
-        className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-colors ${
-          muted ? "bg-red-600 hover:bg-red-700" : "bg-gray-800 hover:bg-gray-700"
-        }`}
-      >
-        {muted ? <MicOff size={18} /> : <Mic size={18} />}
-        {muted ? "Unmute" : "Mute"}
-      </button>
+      {/* Controls */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => setMuted((m) => !m)}
+          className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-colors ${
+            muted ? "bg-red-600 hover:bg-red-700" : "bg-gray-800 hover:bg-gray-700"
+          }`}
+        >
+          {muted ? <MicOff size={18} /> : <Mic size={18} />}
+          {muted ? "Unmute" : "Mute"}
+        </button>
+
+        <button
+          onClick={() => room.disconnect()}
+          className="flex items-center gap-2 px-6 py-3 rounded-full font-medium bg-red-700 hover:bg-red-800 transition-colors"
+        >
+          <PhoneOff size={18} />
+          End Interview
+        </button>
+      </div>
 
       <p className="text-xs text-gray-700 max-w-sm text-center">
         Speak clearly into your microphone. The interviewer will ask one question at a time.
