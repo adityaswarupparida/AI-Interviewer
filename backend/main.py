@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import interviews, reports, webhooks
+from backend.api import interviews, reports, webhooks, metrics
 
 app = FastAPI(title="AI Interviewer API", version="1.0.0")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(interviews.router)
 app.include_router(reports.router)
 app.include_router(webhooks.router)
+app.include_router(metrics.router)
 
 
 @app.get("/health")

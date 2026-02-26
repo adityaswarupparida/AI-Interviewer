@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     BACKEND_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Langfuse observability (optional — leave blank to disable)
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+    LANGFUSE_BASE_URL: str = ""  # alias — if set, overrides LANGFUSE_HOST
+
     class Config:
         env_file = ".env"
 

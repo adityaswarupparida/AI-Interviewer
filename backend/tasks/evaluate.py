@@ -11,6 +11,7 @@ from backend.celery_app import celery_app
 from backend.agents.evaluator_agent import generate_report
 from backend.db.database import SessionLocal
 from backend.db import models
+from backend.observability import get_langfuse
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,28 @@ def evaluate_interview(self, interview_id: str) -> str:
 
         logger.info("Starting evaluation for interview %s.", interview_id)
 
+        lf = get_langfuse()
+        eval_generation = None
+        if lf:
+            trace = lf.trace(
+                name="evaluation",
+                session_id=interview_id,
+                user_id=interview.candidate_name,
+                metadata={"role": interview.role, "interview_id": interview_id},
+                tags=["evaluation", interview.role],
+            )
+            eval_generation = trace.generation(
+                name="generate_report",
+                model="gemini-2.5-flash",
+                input={
+                    "transcript_length": len(interview.transcript),
+                    "role": interview.role,
+                    "candidate_name": interview.candidate_name,
+                    "skills_to_cover": interview.skills_to_cover or [],
+                },
+            )
+
+        t0 = datetime.utcnow()
         report_data = generate_report(
             transcript=interview.transcript,
             role=interview.role,
@@ -63,6 +86,18 @@ def evaluate_interview(self, interview_id: str) -> str:
             candidate_name=interview.candidate_name,
             skills_to_cover=interview.skills_to_cover or [],
         )
+        duration_s = (datetime.utcnow() - t0).total_seconds()
+
+        if eval_generation:
+            eval_generation.end(
+                output={
+                    "overall_score": report_data["overall_score"],
+                    "role_eligibility": report_data["role_eligibility"],
+                    "recommendation": report_data["recommendation"],
+                },
+                metadata={"duration_s": duration_s},
+            )
+            lf.flush()
 
         report = models.Report(
             interview_id=uuid.UUID(interview_id),
@@ -84,6 +119,17 @@ def evaluate_interview(self, interview_id: str) -> str:
         interview.status = "evaluated"
         db.commit()
         db.refresh(report)
+
+        # Score the interview trace in Langfuse so it appears on the interview session
+        lf = get_langfuse()
+        if lf:
+            lf.score(
+                trace_id=interview_id,
+                name="overall_score",
+                value=report_data["overall_score"],
+                comment=report_data["role_eligibility"],
+            )
+            lf.flush()
 
         logger.info(
             "Evaluation complete for interview %s — report %s created.", interview_id, report.id

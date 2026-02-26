@@ -8,8 +8,10 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Mic, MicOff, PhoneOff } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+
+const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 interface InterviewRoomProps {
   token: string;
@@ -32,15 +34,59 @@ export function InterviewRoom({ token, serverUrl, candidateName, interviewId }: 
       onDisconnected={() => router.push(`/report/${interviewId}`)}
     >
       <RoomAudioRenderer />
-      <InterviewUI candidateName={candidateName} />
+      <InterviewUI candidateName={candidateName} interviewId={interviewId} />
     </LiveKitRoom>
   );
 }
 
-function InterviewUI({ candidateName }: { candidateName: string }) {
+function InterviewUI({ candidateName, interviewId }: { candidateName: string; interviewId: string }) {
   const { state, audioTrack } = useVoiceAssistant();
   const room = useRoomContext();
   const [muted, setMuted] = useState(false);
+  const userStoppedAt = useRef<number>(0);
+  const prevState = useRef<string>("");
+  const turnIndex = useRef<number>(0);
+
+  // Use raw LiveKit event — isSpeakingChanged is reliable unlike hook-based isSpeaking.
+  // Only record user stop time when agent is NOT speaking — avoids echo contamination.
+  useEffect(() => {
+    const lp = room.localParticipant;
+    if (!lp) return;
+    const onSpeakingChanged = (speaking: boolean) => {
+      if (prevState.current === "speaking") return; // ignore echo during agent speech
+      if (!speaking) {
+        userStoppedAt.current = Date.now();
+        console.log("[VAD] User stopped speaking");
+      } else {
+        console.log("[VAD] User started speaking");
+      }
+    };
+    lp.on("isSpeakingChanged", onSpeakingChanged);
+    return () => { lp.off("isSpeakingChanged", onSpeakingChanged); };
+  }, [room]);
+
+  // Track when agent starts speaking — measure latency from user stop.
+  // Clear userStoppedAt whenever agent starts speaking to avoid stale reads.
+  useEffect(() => {
+    if (prevState.current !== "speaking" && state === "speaking") {
+      if (userStoppedAt.current) {
+        const ms = Date.now() - userStoppedAt.current;
+        console.log(`[LATENCY] ${ms}ms from user stopped → agent audio started`);
+        fetch(`${API}/api/metrics/latency`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            interview_id: interviewId,
+            latency_ms: ms,
+            turn_index: turnIndex.current,
+          }),
+        }).catch(() => {}); // fire-and-forget, don't block UI
+        turnIndex.current += 1;
+      }
+      userStoppedAt.current = 0;
+    }
+    prevState.current = state;
+  }, [state, interviewId]);
 
   const stateLabel: Record<string, string> = {
     disconnected: "Connecting...",

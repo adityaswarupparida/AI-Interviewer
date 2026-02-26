@@ -15,12 +15,14 @@ export default function ReportPage() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    const poll = async () => {
+    let stopped = false;
+
+    const poll = async (): Promise<boolean> => {
       try {
         const res = await fetch(`${API}/api/reports/${id}`);
         if (res.status === 202) {
           setPending(true);
-          return; // still generating — keep polling
+          return false; // not ready — keep polling
         }
         if (!res.ok) {
           const err = await res.json();
@@ -29,21 +31,25 @@ export default function ReportPage() {
         const data = await res.json();
         setReport(data);
         setPending(false);
+        return true; // done
       } catch (e: any) {
         setError(e.message);
+        return true; // stop polling on error
       } finally {
         setLoading(false);
       }
     };
 
-    poll();
-    // Poll every 5 seconds until report is ready
-    const interval = setInterval(() => {
-      if (!report) poll();
-      else clearInterval(interval);
-    }, 5000);
+    const run = async () => {
+      while (!stopped) {
+        const done = await poll();
+        if (done) break;
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    };
 
-    return () => clearInterval(interval);
+    run();
+    return () => { stopped = true; };
   }, [id]);
 
   if (loading) {

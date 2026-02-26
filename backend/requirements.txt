@@ -22,6 +22,9 @@ psycopg2-binary==2.9.9
 celery==5.4.0
 redis==5.1.1
 
+# Observability
+langfuse>=2.0.0,<3.0.0
+
 # Utils
 pydantic[email]==2.9.2
 pydantic-settings==2.5.2
