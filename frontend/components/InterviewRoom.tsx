@@ -18,6 +18,7 @@ interface InterviewRoomProps {
   serverUrl: string;
   candidateName: string;
   interviewId: string;
+  initialMicEnabled?: boolean;
 }
 
 const STATE_CONFIG: Record<string, { label: string; color: string; glow: string; ring: string }> = {
@@ -29,7 +30,7 @@ const STATE_CONFIG: Record<string, { label: string; color: string; glow: string;
   speaking:     { label: "Speaking",           color: "#5bb8e8", glow: "rgba(91,184,232,0.18)",  ring: "rgba(91,184,232,0.32)"  },
 };
 
-export function InterviewRoom({ token, serverUrl, candidateName, interviewId }: InterviewRoomProps) {
+export function InterviewRoom({ token, serverUrl, candidateName, interviewId, initialMicEnabled = true }: InterviewRoomProps) {
   const router = useRouter();
 
   return (
@@ -37,28 +38,43 @@ export function InterviewRoom({ token, serverUrl, candidateName, interviewId }: 
       token={token}
       serverUrl={serverUrl}
       connect={true}
-      audio={true}
+      audio={initialMicEnabled}
       video={false}
       className="h-screen"
       onDisconnected={() => router.push(`/report/${interviewId}`)}
     >
       <RoomAudioRenderer />
-      <InterviewUI candidateName={candidateName} interviewId={interviewId} />
+      <InterviewUI candidateName={candidateName} interviewId={interviewId} initialMicEnabled={initialMicEnabled} />
     </LiveKitRoom>
   );
 }
 
-function InterviewUI({ candidateName, interviewId }: { candidateName: string; interviewId: string }) {
+function InterviewUI({ candidateName, interviewId, initialMicEnabled = true }: { candidateName: string; interviewId: string; initialMicEnabled?: boolean }) {
   const { state, audioTrack, agent } = useVoiceAssistant();
   const room = useRoomContext();
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(!initialMicEnabled);
   const userStoppedAt = useRef<number>(0);
   const prevState = useRef<string>("");
   const turnIndex = useRef<number>(0);
 
-  // agent.isSpeaking is based on real audio energy — use it to catch cases where
-  // the state attribute lags behind (e.g. initial generate_reply before user speaks).
-  const effectiveState = agent?.isSpeaking && state !== "speaking" ? "speaking" : state;
+  // Debounced display state — switches TO speaking instantly (catches state-attribute lag
+  // on the initial generate_reply), but holds for 600ms before switching AWAY to prevent
+  // flickering caused by brief audio pauses mid-speech.
+  const [displayState, setDisplayState] = useState(state);
+  const speakingHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const isSpeaking = agent?.isSpeaking || state === "speaking";
+    if (isSpeaking) {
+      if (speakingHoldTimer.current) { clearTimeout(speakingHoldTimer.current); speakingHoldTimer.current = null; }
+      setDisplayState("speaking");
+    } else if (displayState === "speaking") {
+      speakingHoldTimer.current = setTimeout(() => setDisplayState(state), 300);
+    } else {
+      setDisplayState(state);
+    }
+    return () => { if (speakingHoldTimer.current) clearTimeout(speakingHoldTimer.current); };
+  }, [state, agent?.isSpeaking]);
 
   useEffect(() => {
     const lp = room.localParticipant;
@@ -97,10 +113,10 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
     prevState.current = state;
   }, [state, interviewId]);
 
-  const cfg = STATE_CONFIG[effectiveState] ?? STATE_CONFIG.connecting;
-  const isListening = effectiveState === "listening";
-  const isThinking = effectiveState === "thinking";
-  const isSpeaking = effectiveState === "speaking";
+  const cfg = STATE_CONFIG[displayState] ?? STATE_CONFIG.connecting;
+  const isListening = displayState === "listening";
+  const isThinking = displayState === "thinking";
+  const isSpeaking = displayState === "speaking";
 
   return (
     <>
@@ -257,7 +273,7 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
           {/* State label */}
           <div style={{ textAlign: "center" }}>
             <p
-              key={effectiveState}
+              key={displayState}
               className="state-label"
               style={{
                 fontFamily: "'Cormorant Garamond', serif",

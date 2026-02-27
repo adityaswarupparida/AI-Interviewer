@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.agents.evaluator_agent import extract_skills_from_jd
+from backend.auth import get_current_user
 from backend.config import settings
 from backend.db import models
 from backend.db.database import get_db
@@ -15,7 +16,11 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 
 @router.post("/", response_model=InterviewResponse, status_code=201)
-async def create_interview(payload: CreateInterviewRequest, db: Session = Depends(get_db)):
+async def create_interview(
+    payload: CreateInterviewRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     """Recruiter creates an interview — returns an invite link to send the candidate."""
     skills = extract_skills_from_jd(payload.job_description, payload.role)
 
@@ -33,6 +38,7 @@ async def create_interview(payload: CreateInterviewRequest, db: Session = Depend
 
     interview = models.Interview(
         id=uuid.UUID(interview_id),
+        user_id=current_user.id,
         candidate_name=payload.candidate_name,
         candidate_email=payload.candidate_email,
         role=payload.role,
@@ -81,14 +87,20 @@ def get_candidate_token(interview_id: str, db: Session = Depends(get_db)):
         "token": token,
         "livekit_url": settings.LIVEKIT_URL,
         "room_name": interview.livekit_room_name,
+        "candidate_name": interview.candidate_name,
+        "role": interview.role,
     }
 
 
 @router.get("/", response_model=list[InterviewResponse])
-def list_interviews(db: Session = Depends(get_db)):
-    """Recruiter dashboard — list all interviews ordered by newest first."""
+def list_interviews(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Dashboard — list all interviews for the current user, newest first."""
     interviews = (
         db.query(models.Interview)
+        .filter(models.Interview.user_id == current_user.id)
         .order_by(models.Interview.created_at.desc())
         .all()
     )

@@ -59,6 +59,9 @@ cd frontend && npm run dev
 - Do NOT add a separate `vad=` to `AgentSession` — Gemini Live API handles turn detection natively. Adding Silero VAD breaks it.
 - Always use `python -m backend.agents.interviewer_agent start` in Docker — `dev` mode crashes in headless environments.
 
+**Auth:**
+- Do NOT use `passlib` — it's incompatible with `bcrypt >= 4.x` (raises `AttributeError: module 'bcrypt' has no attribute '__about__'` and `ValueError` during its internal `detect_wrap_bug` test). Use `bcrypt` directly instead: `bcrypt.hashpw(pw.encode(), bcrypt.gensalt())` / `bcrypt.checkpw(plain.encode(), hashed.encode())`.
+
 **Dependencies:**
 - `livekit-agents`, `livekit-plugins-google`, `livekit-plugins-silero` must stay pinned to the same version (currently `1.4.3`). They are a matched set.
 - Use `gemini-2.5-flash` (or the native audio preview model). `gemini-2.0-flash` returns 404 for new API keys.

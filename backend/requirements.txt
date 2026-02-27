@@ -25,6 +25,10 @@ redis==5.1.1
 # Observability
 langfuse>=2.0.0,<3.0.0
 
+# Auth
+bcrypt==4.2.1
+PyJWT==2.9.0
+
 # Utils
 pydantic[email]==2.9.2
 pydantic-settings==2.5.2

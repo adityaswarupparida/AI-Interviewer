@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ClipboardCopy, Plus, Loader2, ExternalLink } from "lucide-react";
+import { ClipboardCopy, Plus, Loader2, ExternalLink, LogOut } from "lucide-react";
+import { authHeaders, clearToken } from "@/lib/auth";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
@@ -23,6 +25,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 };
 
 export default function Dashboard() {
+  const router = useRouter();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading]       = useState(true);
   const [creating, setCreating]     = useState(false);
@@ -36,8 +39,11 @@ export default function Dashboard() {
   });
 
   const fetchInterviews = () =>
-    fetch(`${API}/api/interviews`)
-      .then((r) => r.json())
+    fetch(`${API}/api/interviews`, { headers: authHeaders() })
+      .then((r) => {
+        if (r.status === 401) { clearToken(); router.push("/login"); throw new Error(); }
+        return r.json();
+      })
       .then(setInterviews)
       .finally(() => setLoading(false));
 
@@ -50,7 +56,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${API}/api/interviews`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify(form),
       });
       const data = await res.json();
@@ -82,11 +88,20 @@ export default function Dashboard() {
               Talent Assessment Platform
             </p>
           </div>
-          {!loading && (
-            <p className="text-[10px] text-[#6b7280] tracking-[0.12em] uppercase pb-0.5">
-              {interviews.length} interview{interviews.length !== 1 ? "s" : ""}
-            </p>
-          )}
+          <div className="flex items-center gap-4 pb-0.5">
+            {!loading && (
+              <p className="text-[10px] text-[#6b7280] tracking-[0.12em] uppercase">
+                {interviews.length} interview{interviews.length !== 1 ? "s" : ""}
+              </p>
+            )}
+            <button
+              onClick={() => { clearToken(); router.push("/login"); }}
+              className="text-[#6b7280] hover:text-[#9ca3af] transition-colors"
+              title="Sign out"
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
         </div>
       </header>
 
