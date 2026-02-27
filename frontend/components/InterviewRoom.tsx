@@ -20,6 +20,15 @@ interface InterviewRoomProps {
   interviewId: string;
 }
 
+const STATE_CONFIG: Record<string, { label: string; color: string; glow: string; ring: string }> = {
+  disconnected: { label: "Connecting",         color: "#3d4a5c", glow: "rgba(61,74,92,0.12)",    ring: "rgba(61,74,92,0.25)"    },
+  connecting:   { label: "Connecting",         color: "#3d4a5c", glow: "rgba(61,74,92,0.12)",    ring: "rgba(61,74,92,0.25)"    },
+  initializing: { label: "Starting",           color: "#8b78e6", glow: "rgba(139,120,230,0.18)", ring: "rgba(139,120,230,0.32)" },
+  listening:    { label: "Listening",          color: "#4ecba0", glow: "rgba(78,203,160,0.15)",  ring: "rgba(78,203,160,0.28)"  },
+  thinking:     { label: "Thinking",           color: "#e8a84c", glow: "rgba(232,168,76,0.15)",  ring: "rgba(232,168,76,0.28)"  },
+  speaking:     { label: "Speaking",           color: "#5bb8e8", glow: "rgba(91,184,232,0.18)",  ring: "rgba(91,184,232,0.32)"  },
+};
+
 export function InterviewRoom({ token, serverUrl, candidateName, interviewId }: InterviewRoomProps) {
   const router = useRouter();
 
@@ -47,13 +56,11 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
   const prevState = useRef<string>("");
   const turnIndex = useRef<number>(0);
 
-  // Use raw LiveKit event — isSpeakingChanged is reliable unlike hook-based isSpeaking.
-  // Only record user stop time when agent is NOT speaking — avoids echo contamination.
   useEffect(() => {
     const lp = room.localParticipant;
     if (!lp) return;
     const onSpeakingChanged = (speaking: boolean) => {
-      if (prevState.current === "speaking") return; // ignore echo during agent speech
+      if (prevState.current === "speaking") return;
       if (!speaking) {
         userStoppedAt.current = Date.now();
         console.log("[VAD] User stopped speaking");
@@ -65,8 +72,6 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
     return () => { lp.off("isSpeakingChanged", onSpeakingChanged); };
   }, [room]);
 
-  // Track when agent starts speaking — measure latency from user stop.
-  // Clear userStoppedAt whenever agent starts speaking to avoid stale reads.
   useEffect(() => {
     if (prevState.current !== "speaking" && state === "speaking") {
       if (userStoppedAt.current) {
@@ -80,7 +85,7 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
             latency_ms: ms,
             turn_index: turnIndex.current,
           }),
-        }).catch(() => {}); // fire-and-forget, don't block UI
+        }).catch(() => {});
         turnIndex.current += 1;
       }
       userStoppedAt.current = 0;
@@ -88,79 +93,245 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
     prevState.current = state;
   }, [state, interviewId]);
 
-  const stateLabel: Record<string, string> = {
-    disconnected: "Connecting...",
-    connecting:   "Connecting...",
-    initializing: "Starting interview...",
-    listening:    "Listening...",
-    thinking:     "Thinking...",
-    speaking:     "Interviewer speaking",
-  };
-
-  const isAgentSpeaking = state === "speaking";
+  const cfg = STATE_CONFIG[state] ?? STATE_CONFIG.connecting;
+  const isListening = state === "listening";
+  const isThinking = state === "thinking";
+  const isSpeaking = state === "speaking";
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-950 text-white gap-8">
-      {/* Interviewer avatar */}
-      <div className="relative">
-        <div
-          className={`w-36 h-36 rounded-full flex items-center justify-center transition-all duration-300 ${
-            isAgentSpeaking
-              ? "bg-blue-600 shadow-[0_0_40px_10px_rgba(59,130,246,0.4)]"
-              : "bg-gray-800"
-          }`}
-        >
-          <svg viewBox="0 0 64 64" className="w-16 h-16 text-white opacity-80" fill="currentColor">
-            <circle cx="32" cy="20" r="10" />
-            <rect x="18" y="34" width="28" height="20" rx="6" />
-            <rect x="10" y="36" width="8" height="14" rx="4" />
-            <rect x="46" y="36" width="8" height="14" rx="4" />
-          </svg>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=IBM+Plex+Mono:wght@300;400&display=swap');
+
+        @keyframes breathe {
+          0%, 100% { transform: scale(1);    opacity: 0.5; }
+          50%       { transform: scale(1.1); opacity: 1;   }
+        }
+        @keyframes sonar-1 {
+          0%   { transform: scale(1);    opacity: 0.6; }
+          100% { transform: scale(1.55); opacity: 0;   }
+        }
+        @keyframes sonar-2 {
+          0%   { transform: scale(1);    opacity: 0.4; }
+          100% { transform: scale(1.9);  opacity: 0;   }
+        }
+        @keyframes orbit {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes fade-up {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0);   }
+        }
+        @keyframes ambient-shift {
+          0%, 100% { opacity: 0.6; }
+          50%       { opacity: 1;   }
+        }
+        .orb-glow { transition: box-shadow 0.8s ease, border-color 0.8s ease, background 0.8s ease; }
+        .state-label { animation: fade-up 0.4s ease both; }
+        .ctrl-btn { transition: transform 0.15s ease, opacity 0.15s ease; }
+        .ctrl-btn:hover { transform: translateY(-2px); opacity: 0.9; }
+        .ctrl-btn:active { transform: translateY(0); }
+      `}</style>
+
+      <div style={{
+        minHeight: "100vh",
+        background: "#07080d",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "'IBM Plex Mono', monospace",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+
+        {/* Ambient radial wash — shifts with state */}
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          background: `radial-gradient(ellipse 70% 55% at 50% 42%, ${cfg.glow} 0%, transparent 70%)`,
+          transition: "background 1.2s ease",
+          pointerEvents: "none",
+        }} />
+
+        {/* Candidate name — top */}
+        <div style={{ position: "absolute", top: "36px", textAlign: "center" }}>
+          <p style={{
+            fontSize: "10px",
+            letterSpacing: "0.2em",
+            textTransform: "uppercase",
+            color: "#2e3540",
+          }}>
+            {candidateName}
+          </p>
         </div>
-        {isAgentSpeaking && (
-          <div className="absolute inset-0 rounded-full border-4 border-blue-400 animate-ping opacity-30" />
-        )}
-      </div>
 
-      {/* State label */}
-      <p className="text-gray-400 text-lg tracking-wide">
-        {stateLabel[state] ?? state}
-      </p>
+        {/* Centre stage */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "52px", zIndex: 1 }}>
 
-      {/* Audio visualizer when agent is speaking */}
-      {audioTrack && isAgentSpeaking && (
-        <div className="w-64 h-12">
-          <BarVisualizer trackRef={audioTrack} barCount={24} className="h-full" />
+          {/* Orb container */}
+          <div style={{ position: "relative", width: "220px", height: "220px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+
+            {/* Sonar rings — listening */}
+            {isListening && (
+              <>
+                <div style={{
+                  position: "absolute", inset: 0, borderRadius: "50%",
+                  border: `1px solid ${cfg.ring}`,
+                  animation: "sonar-1 2.4s ease-out infinite",
+                }} />
+                <div style={{
+                  position: "absolute", inset: 0, borderRadius: "50%",
+                  border: `1px solid ${cfg.ring}`,
+                  animation: "sonar-2 2.4s ease-out infinite 0.8s",
+                }} />
+              </>
+            )}
+
+            {/* Orbiting arc — thinking */}
+            {isThinking && (
+              <div style={{
+                position: "absolute",
+                inset: "-18px",
+                borderRadius: "50%",
+                border: `1.5px solid transparent`,
+                borderTopColor: cfg.color,
+                borderRightColor: cfg.ring,
+                animation: "orbit 1.4s cubic-bezier(0.4,0,0.2,1) infinite",
+              }} />
+            )}
+
+            {/* Speaking outer glow ring */}
+            {isSpeaking && (
+              <div style={{
+                position: "absolute",
+                inset: "-10px",
+                borderRadius: "50%",
+                border: `1px solid ${cfg.ring}`,
+                animation: "breathe 2.2s ease-in-out infinite",
+              }} />
+            )}
+
+            {/* Main orb */}
+            <div
+              className="orb-glow"
+              style={{
+                width: "220px",
+                height: "220px",
+                borderRadius: "50%",
+                background: `radial-gradient(circle at 38% 32%, ${cfg.color}1a 0%, #0d1018 65%)`,
+                border: `1px solid ${cfg.color}30`,
+                boxShadow: `0 0 80px 0 ${cfg.glow}, 0 0 24px 0 ${cfg.glow}, inset 0 1px 0 ${cfg.color}15`,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                overflow: "hidden",
+                animation: isListening ? "breathe 3.5s ease-in-out infinite" : undefined,
+              }}
+            >
+              {/* Core dot */}
+              <div style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "50%",
+                background: `radial-gradient(circle, ${cfg.color}55 0%, transparent 70%)`,
+                transition: "background 0.8s ease",
+              }} />
+
+              {/* BarVisualizer — only when speaking */}
+              {audioTrack && isSpeaking && (
+                <div style={{ width: "120px", height: "28px", opacity: 0.65 }}>
+                  <BarVisualizer trackRef={audioTrack} barCount={18} className="h-full" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* State label */}
+          <div style={{ textAlign: "center" }}>
+            <p
+              key={state}
+              className="state-label"
+              style={{
+                fontFamily: "'Cormorant Garamond', serif",
+                fontSize: "32px",
+                fontWeight: 300,
+                letterSpacing: "0.04em",
+                color: cfg.color,
+                marginBottom: "10px",
+                transition: "color 0.8s ease",
+              }}
+            >
+              {cfg.label}
+            </p>
+            <p style={{
+              fontSize: "10px",
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "#252d38",
+            }}>
+              AI Interviewer
+            </p>
+          </div>
         </div>
-      )}
 
-      {/* Candidate info */}
-      <p className="text-sm text-gray-600">You are: {candidateName}</p>
+        {/* Controls */}
+        <div style={{
+          position: "absolute",
+          bottom: "52px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+        }}>
+          <button
+            onClick={() => setMuted((m) => !m)}
+            className="ctrl-btn"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "13px 26px",
+              borderRadius: "100px",
+              border: `1px solid ${muted ? "rgba(239,68,68,0.35)" : "rgba(255,255,255,0.08)"}`,
+              background: muted ? "rgba(239,68,68,0.08)" : "rgba(255,255,255,0.03)",
+              color: muted ? "#ef4444" : "#4b5a6b",
+              fontSize: "11px",
+              letterSpacing: "0.1em",
+              cursor: "pointer",
+              backdropFilter: "blur(12px)",
+            }}
+          >
+            {muted ? <MicOff size={14} /> : <Mic size={14} />}
+            {muted ? "Unmute" : "Mute"}
+          </button>
 
-      {/* Controls */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => setMuted((m) => !m)}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-colors ${
-            muted ? "bg-red-600 hover:bg-red-700" : "bg-gray-800 hover:bg-gray-700"
-          }`}
-        >
-          {muted ? <MicOff size={18} /> : <Mic size={18} />}
-          {muted ? "Unmute" : "Mute"}
-        </button>
+          <button
+            onClick={() => room.disconnect()}
+            className="ctrl-btn"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "13px 26px",
+              borderRadius: "100px",
+              border: "1px solid rgba(239,68,68,0.25)",
+              background: "rgba(239,68,68,0.06)",
+              color: "#ef4444",
+              fontSize: "11px",
+              letterSpacing: "0.1em",
+              cursor: "pointer",
+              backdropFilter: "blur(12px)",
+            }}
+          >
+            <PhoneOff size={14} />
+            End Interview
+          </button>
+        </div>
 
-        <button
-          onClick={() => room.disconnect()}
-          className="flex items-center gap-2 px-6 py-3 rounded-full font-medium bg-red-700 hover:bg-red-800 transition-colors"
-        >
-          <PhoneOff size={18} />
-          End Interview
-        </button>
       </div>
-
-      <p className="text-xs text-gray-700 max-w-sm text-center">
-        Speak clearly into your microphone. The interviewer will ask one question at a time.
-      </p>
-    </div>
+    </>
   );
 }

@@ -6,7 +6,16 @@ const config: Config = {
     "./components/**/*.{ts,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        display: ['"Cormorant Garamond"', "Georgia", "serif"],
+        mono:    ['"IBM Plex Mono"', "Menlo", "monospace"],
+      },
+      colors: {
+        void: "#07080d",
+        ink:  { DEFAULT: "#0d1018", 2: "#111620" },
+      },
+    },
   },
   plugins: [],
 };
