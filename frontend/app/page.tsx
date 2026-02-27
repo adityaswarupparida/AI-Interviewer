@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ClipboardCopy, Plus, Loader2 } from "lucide-react";
+import { ClipboardCopy, Plus, Loader2, ExternalLink } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
@@ -145,9 +145,12 @@ export default function Dashboard() {
           {newInviteLink && (
             <div className="mt-4 flex items-center gap-3 bg-[#4ecba0]/[0.05] border border-[#4ecba0]/20 rounded-xl px-4 py-3">
               <span className="text-xs text-[#4ecba0] flex-1 truncate tracking-wide">{newInviteLink}</span>
-              <button onClick={() => copy(newInviteLink)} className="text-[#4ecba0]/50 hover:text-[#4ecba0] transition-colors">
+              <button onClick={() => copy(newInviteLink)} className="text-[#4ecba0]/50 hover:text-[#4ecba0] transition-colors" title="Copy link">
                 <ClipboardCopy size={13} />
               </button>
+              <a href={newInviteLink} target="_blank" rel="noopener noreferrer" className="text-[#4ecba0]/50 hover:text-[#4ecba0] transition-colors" title="Open in new tab">
+                <ExternalLink size={13} />
+              </a>
               {copied && <span className="text-[10px] text-[#4ecba0] tracking-[0.15em] uppercase">Copied</span>}
             </div>
           )}
@@ -201,7 +204,7 @@ export default function Dashboard() {
                       )}
                       <button
                         onClick={() => copy(i.invite_link)}
-                        className="text-[#9ca3af] hover:text-[#e8e4dc] transition-colors"
+                        className="text-[#6b7280] hover:text-[#e8e4dc] transition-colors"
                         title="Copy invite link"
                       >
                         <ClipboardCopy size={13} />
