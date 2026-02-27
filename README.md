@@ -4,6 +4,16 @@ An AI-powered voice interview platform. A recruiter creates an interview, sends 
 
 ---
 
+## Screenshots
+
+<img width="1710" height="920" alt="Screenshot 2026-02-27 at 4 03 18 PM" src="https://github.com/user-attachments/assets/dd081bcc-3b9c-4a6d-b730-fed8777a45db" />
+
+<img width="1710" height="949" alt="Screenshot 2026-02-27 at 4 15 47 PM" src="https://github.com/user-attachments/assets/1c18156a-7967-4ef8-b18b-3d0d070ac1de" />
+
+<img width="1709" height="939" alt="Screenshot 2026-02-27 at 4 20 15 PM" src="https://github.com/user-attachments/assets/1588eed1-a91f-4e83-8ce8-53c923f6978f" />
+
+<img width="1695" height="972" alt="Screenshot 2026-02-27 at 4 25 30 PM" src="https://github.com/user-attachments/assets/1be0d924-dbba-4459-ae2b-753d0a3c2c08" />
+
 ## How it works
 
 ```
@@ -53,8 +63,8 @@ Recruiter views report on dashboard
           │Postgres │  │  Redis  │
           │  :5432  │  │  :6379  │
           └────▲────┘  └────┬────┘
-               │             │  deliver task
-               │             ▼
+               │            │  deliver task
+               │            ▼
                │      ┌──────────────────┐
                │      │  Celery Worker   │
                └──────│  evaluate.py     │

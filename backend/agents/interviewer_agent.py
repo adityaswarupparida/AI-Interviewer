@@ -213,7 +213,8 @@ async def entrypoint(ctx: JobContext) -> None:
         room_input_options=RoomInputOptions(close_on_disconnect=False),
     )
 
-    # Trigger the initial greeting without waiting for the user to speak first.
+    # Give the candidate a moment to settle before the agent speaks first.
+    await asyncio.sleep(2)
     await session.generate_reply()
 
 

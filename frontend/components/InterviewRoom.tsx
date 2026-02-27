@@ -49,12 +49,16 @@ export function InterviewRoom({ token, serverUrl, candidateName, interviewId }: 
 }
 
 function InterviewUI({ candidateName, interviewId }: { candidateName: string; interviewId: string }) {
-  const { state, audioTrack } = useVoiceAssistant();
+  const { state, audioTrack, agent } = useVoiceAssistant();
   const room = useRoomContext();
   const [muted, setMuted] = useState(false);
   const userStoppedAt = useRef<number>(0);
   const prevState = useRef<string>("");
   const turnIndex = useRef<number>(0);
+
+  // agent.isSpeaking is based on real audio energy — use it to catch cases where
+  // the state attribute lags behind (e.g. initial generate_reply before user speaks).
+  const effectiveState = agent?.isSpeaking && state !== "speaking" ? "speaking" : state;
 
   useEffect(() => {
     const lp = room.localParticipant;
@@ -93,10 +97,10 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
     prevState.current = state;
   }, [state, interviewId]);
 
-  const cfg = STATE_CONFIG[state] ?? STATE_CONFIG.connecting;
-  const isListening = state === "listening";
-  const isThinking = state === "thinking";
-  const isSpeaking = state === "speaking";
+  const cfg = STATE_CONFIG[effectiveState] ?? STATE_CONFIG.connecting;
+  const isListening = effectiveState === "listening";
+  const isThinking = effectiveState === "thinking";
+  const isSpeaking = effectiveState === "speaking";
 
   return (
     <>
@@ -129,9 +133,9 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
         }
         .orb-glow { transition: box-shadow 0.8s ease, border-color 0.8s ease, background 0.8s ease; }
         .state-label { animation: fade-up 0.4s ease both; }
-        .ctrl-btn { transition: transform 0.15s ease, opacity 0.15s ease; }
-        .ctrl-btn:hover { transform: translateY(-2px); opacity: 0.9; }
-        .ctrl-btn:active { transform: translateY(0); }
+        .ctrl-btn { transition: opacity 0.15s ease; }
+        .ctrl-btn:hover { opacity: 0.75; }
+        .ctrl-btn:active { opacity: 0.55; }
       `}</style>
 
       <div style={{
@@ -253,7 +257,7 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
           {/* State label */}
           <div style={{ textAlign: "center" }}>
             <p
-              key={state}
+              key={effectiveState}
               className="state-label"
               style={{
                 fontFamily: "'Cormorant Garamond', serif",
@@ -287,7 +291,11 @@ function InterviewUI({ candidateName, interviewId }: { candidateName: string; in
           gap: "12px",
         }}>
           <button
-            onClick={() => setMuted((m) => !m)}
+            onClick={() => {
+              const next = !muted;
+              setMuted(next);
+              room.localParticipant.setMicrophoneEnabled(!next);
+            }}
             className="ctrl-btn"
             style={{
               display: "flex",

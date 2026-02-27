@@ -74,7 +74,7 @@ def get_candidate_token(interview_id: str, db: Session = Depends(get_db)):
 
     if interview.status == "pending":
         interview.status = "active"
-        interview.started_at = datetime.utcnow()
+        interview.started_at = datetime.now()
         db.commit()
 
     return {
