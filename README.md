@@ -28,6 +28,44 @@ Recruiter views report on dashboard
 
 ---
 
+## Architecture
+
+```
+                        ┌──────────────────────┐
+                        │       Browser        │
+                        │   (Next.js :3000)    │
+                        └────┬────────────┬────┘
+                   REST API  │            │  WebRTC audio
+                             │            │
+              ┌──────────────▼──┐     ┌───▼──────────────────┐
+              │    Backend      │     │    LiveKit Cloud      │
+              │  FastAPI :8000  │────►│    (Media Server)     │
+              │                 │     └───────────┬───────────┘
+              │ • create room   │                 │
+              │ • issue tokens  │       dispatch job on join
+              │ • serve reports │                 │
+              └──┬───────────┬──┘                 ▼
+                 │           │◄──── webhook ┌─────────────────┐
+               write    queue  (transcript) │   Agent Worker  │
+                 │           │              │ Gemini 2.5 Flash│
+                 ▼           ▼              │  Native Audio   │
+          ┌─────────┐  ┌─────────┐          └─────────────────┘
+          │Postgres │  │  Redis  │
+          │  :5432  │  │  :6379  │
+          └────▲────┘  └────┬────┘
+               │             │  deliver task
+               │             ▼
+               │      ┌──────────────────┐
+               │      │  Celery Worker   │
+               └──────│  evaluate.py     │
+            save      │ Gemini 2.5 Flash │
+            report    └──────────────────┘
+
+  Optional: Backend + Agent ──────────────► Langfuse (observability)
+```
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -38,7 +76,7 @@ Recruiter views report on dashboard
 | Database | PostgreSQL 16 |
 | Task Queue | Celery + Redis |
 | Voice Agent | LiveKit Agents 1.4.3 |
-| AI Model | Gemini 2.5 Flash (Live API for voice, standard API for evaluation) |
+| AI Model | Gemini 2.5 Flash |
 | Observability | Langfuse (optional) |
 | Infrastructure | Docker Compose |
 
@@ -95,8 +133,8 @@ ai-intrvwr/
 **1. Clone the repo**
 
 ```bash
-git clone <repo-url>
-cd ai-intrvwr
+git clone https://github.com/adityaswarupparida/AI-Interviewer.git
+cd AI-Interviewer
 ```
 
 **2. Create your `.env` file**
