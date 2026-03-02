@@ -116,6 +116,8 @@ async def entrypoint(ctx: JobContext) -> None:
             model="gemini-2.5-flash-native-audio-preview-12-2025",
             voice="Zephyr",
             temperature=0.8,
+            modalities=["AUDIO"],
+            max_output_tokens=2048,
             api_key=settings.GEMINI_API_KEY,
         ),
     )
