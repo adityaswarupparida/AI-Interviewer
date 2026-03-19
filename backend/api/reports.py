@@ -52,18 +52,14 @@ def get_report(interview_id: str, db: Session = Depends(get_db)):
 @router.get("/")
 def list_reports(db: Session = Depends(get_db)):
     """List all generated reports with summary info."""
-    reports = (
-        db.query(models.Report)
+    rows = (
+        db.query(models.Report, models.Interview)
+        .outerjoin(models.Interview, models.Interview.id == models.Report.interview_id)
         .order_by(models.Report.generated_at.desc())
         .all()
     )
     result = []
-    for r in reports:
-        interview = (
-            db.query(models.Interview)
-            .filter(models.Interview.id == r.interview_id)
-            .first()
-        )
+    for r, interview in rows:
         result.append({
             "id": str(r.id),
             "interview_id": str(r.interview_id),
