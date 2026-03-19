@@ -92,6 +92,60 @@ def get_candidate_token(interview_id: str, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/{interview_id}/repeat", response_model=InterviewResponse, status_code=201)
+async def repeat_interview(
+    interview_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Create a new interview with identical settings as an existing one."""
+    original = (
+        db.query(models.Interview)
+        .filter(
+            models.Interview.id == uuid.UUID(interview_id),
+            models.Interview.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not original:
+        raise HTTPException(status_code=404, detail="Interview not found.")
+
+    new_id = str(uuid.uuid4())
+    room_name = f"interview-{new_id}"
+
+    await create_interview_room(
+        room_name=room_name,
+        interview_id=new_id,
+        role=original.role,
+        job_description=original.job_description,
+        skills_to_cover=original.skills_to_cover,
+        candidate_name=original.candidate_name,
+    )
+
+    interview = models.Interview(
+        id=uuid.UUID(new_id),
+        user_id=current_user.id,
+        candidate_name=original.candidate_name,
+        candidate_email=original.candidate_email,
+        role=original.role,
+        job_description=original.job_description,
+        skills_to_cover=original.skills_to_cover,
+        livekit_room_name=room_name,
+        status="pending",
+    )
+    db.add(interview)
+    db.commit()
+
+    return InterviewResponse(
+        id=interview.id,
+        candidate_name=interview.candidate_name,
+        role=interview.role,
+        status=interview.status,
+        invite_link=f"{settings.FRONTEND_URL}/interview/{new_id}",
+        created_at=interview.created_at,
+    )
+
+
 @router.get("/", response_model=list[InterviewResponse])
 def list_interviews(
     db: Session = Depends(get_db),

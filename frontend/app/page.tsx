@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ClipboardCopy, Plus, Loader2, ExternalLink, LogOut } from "lucide-react";
+import { ClipboardCopy, Plus, Loader2, ExternalLink, LogOut, RotateCcw } from "lucide-react";
 import { authHeaders, clearToken } from "@/lib/auth";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
@@ -31,6 +31,8 @@ export default function Dashboard() {
   const [creating, setCreating]     = useState(false);
   const [newInviteLink, setNewInviteLink] = useState("");
   const [copied, setCopied]         = useState(false);
+  const [repeating, setRepeating]   = useState<string | null>(null);
+  const [repeatLinks, setRepeatLinks] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     candidate_name: "",
     candidate_email: "",
@@ -65,6 +67,22 @@ export default function Dashboard() {
       fetchInterviews();
     } finally {
       setCreating(false);
+    }
+  };
+
+  const repeatInterview = async (id: string) => {
+    setRepeating(id);
+    try {
+      const res = await fetch(`${API}/api/interviews/${id}/repeat`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      if (res.status === 401) { clearToken(); router.push("/login"); return; }
+      const data = await res.json();
+      setRepeatLinks((prev) => ({ ...prev, [id]: data.invite_link }));
+      fetchInterviews();
+    } finally {
+      setRepeating(null);
     }
   };
 
@@ -193,38 +211,63 @@ export default function Dashboard() {
                   className: "text-[#4b5563] bg-white/[0.03] border border-white/[0.06]",
                 };
                 return (
-                  <div
-                    key={i.id}
-                    className="bg-ink border border-white/[0.06] hover:border-white/[0.11] rounded-xl px-6 py-4 flex items-center justify-between transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm text-[#e8e4dc]">{i.candidate_name}</p>
-                      <p className="text-[11px] text-[#9ca3af] mt-0.5">{i.role}</p>
-                      <p className="text-[10px] text-[#6b7280] mt-1.5 tracking-wide">
-                        {new Date(i.created_at).toLocaleString()}
-                      </p>
+                  <div key={i.id} className="space-y-2">
+                    <div className="bg-ink border border-white/[0.06] hover:border-white/[0.11] rounded-xl px-6 py-4 flex items-center justify-between transition-colors">
+                      <div>
+                        <p className="text-sm text-[#e8e4dc]">{i.candidate_name}</p>
+                        <p className="text-[11px] text-[#9ca3af] mt-0.5">{i.role}</p>
+                        <p className="text-[10px] text-[#6b7280] mt-1.5 tracking-wide">
+                          {new Date(i.created_at).toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className={`text-[10px] px-2.5 py-1 rounded-full tracking-[0.12em] uppercase ${sc.className}`}>
+                          {sc.label}
+                        </span>
+                        {i.status === "evaluated" && (
+                          <Link
+                            href={`/report/${i.id}`}
+                            className="text-[11px] text-[#9ca3af] hover:text-[#e8e4dc] tracking-wide transition-colors"
+                          >
+                            View Report
+                          </Link>
+                        )}
+                        {(i.status === "evaluated" || i.status === "completed") && (
+                          <button
+                            onClick={() => repeatInterview(i.id)}
+                            disabled={repeating === i.id}
+                            className="text-[#6b7280] hover:text-[#e8e4dc] transition-colors disabled:opacity-40"
+                            title="Repeat interview"
+                          >
+                            {repeating === i.id
+                              ? <Loader2 size={13} className="animate-spin" />
+                              : <RotateCcw size={13} />
+                            }
+                          </button>
+                        )}
+                        <button
+                          onClick={() => copy(i.invite_link)}
+                          className="text-[#6b7280] hover:text-[#e8e4dc] transition-colors"
+                          title="Copy invite link"
+                        >
+                          <ClipboardCopy size={13} />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <span className={`text-[10px] px-2.5 py-1 rounded-full tracking-[0.12em] uppercase ${sc.className}`}>
-                        {sc.label}
-                      </span>
-                      {i.status === "evaluated" && (
-                        <Link
-                          href={`/report/${i.id}`}
-                          className="text-[11px] text-[#9ca3af] hover:text-[#e8e4dc] tracking-wide transition-colors"
-                        >
-                          View Report
-                        </Link>
-                      )}
-                      <button
-                        onClick={() => copy(i.invite_link)}
-                        className="text-[#6b7280] hover:text-[#e8e4dc] transition-colors"
-                        title="Copy invite link"
-                      >
-                        <ClipboardCopy size={13} />
-                      </button>
-                    </div>
+                    {repeatLinks[i.id] && (
+                      <div className="flex items-center gap-3 bg-[#4ecba0]/[0.05] border border-[#4ecba0]/20 rounded-xl px-4 py-3">
+                        <span className="text-[10px] text-[#4ecba0]/60 tracking-[0.15em] uppercase shrink-0">New link</span>
+                        <span className="text-xs text-[#4ecba0] flex-1 truncate tracking-wide">{repeatLinks[i.id]}</span>
+                        <button onClick={() => copy(repeatLinks[i.id])} className="text-[#4ecba0]/50 hover:text-[#4ecba0] transition-colors" title="Copy">
+                          <ClipboardCopy size={13} />
+                        </button>
+                        <a href={repeatLinks[i.id]} target="_blank" rel="noopener noreferrer" className="text-[#4ecba0]/50 hover:text-[#4ecba0] transition-colors" title="Open">
+                          <ExternalLink size={13} />
+                        </a>
+                      </div>
+                    )}
                   </div>
                 );
               })}
